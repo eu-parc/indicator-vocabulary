@@ -24,6 +24,8 @@ MIGRATE_SUGGESTER ?= https://orcid.org/0000-0001-8327-0142
 NANOPUB_TYPE ?= https://w3id.org/iadopt/ont/Variable
 NANOPUB_TEMPLATE ?= https://w3id.org/np/RAYXmR56YAlwKU-8h9cITx_0Y1_9t-lqXyVcJAgeEHDjw
 NANOPUB_PART_OF ?= https://w3id.org/spaces/chemical-exposome-indicator/r/vocabulary
+# Vocabulary query (approved classes) behind the Nanodash vocabulary view.
+VOCABULARY_QUERY_URL ?= https://query.knowledgepixels.com/api/RA5rQSjX-6t_ccwhgZhxCpWryxuRjMFeCMXelxJYfxtdw/get-approved-classes-of-an-ontology-from-space-members?ontology=https%3A%2F%2Fw3id.org%2Fspaces%2Fchemical-exposome-indicator%2Fr%2Fvocabulary
 DRY ?=
 
 BOT_NAME ?= Indicator bot
@@ -43,7 +45,7 @@ DATA_FILES = $(sort $(wildcard $(DROPBOX_FOLDER)/*.yaml))
 	validate-pipeline validate-nanopubs validate-pr process-dropbox archive-dropbox \
 	publish-defining migrate pipeline assertions \
 	bot-identity publish-bot-introduction bot-ci-secrets \
-	test-flow clean
+	check-consistency test-flow clean
 
 help:
 	@echo "Targets:"
@@ -58,6 +60,7 @@ help:
 	@echo "  make bot-identity              # one-time: generate bot keypair + introduction"
 	@echo "  make publish-bot-introduction  # one-time: publish the reviewed introduction"
 	@echo "  make bot-ci-secrets            # one-time: push signing key + identity URIs to $(CI_REPO)"
+	@echo "  make check-consistency         # check the vocabulary query and $(PUBLISHED_FOLDER) for duplicates, broken links, drift"
 	@echo "  make test-flow                 # local end-to-end dry-run test"
 
 print-data:
@@ -208,6 +211,12 @@ assertions: prepare
 			--nanopub-folder $(PUBLISHED_FOLDER) \
 			--out $(ASSERTIONS_FOLDER); \
 	fi
+
+check-consistency:
+	uv run python scripts/check_consistency.py \
+		--query-url "$(VOCABULARY_QUERY_URL)" \
+		--namespace "$(MINT_NAMESPACE)" \
+		--published-dir $(PUBLISHED_FOLDER)
 
 test-flow:
 	$(MAKE) validate-pipeline

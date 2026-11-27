@@ -92,7 +92,12 @@ The full dropbox contract is in [schema/dropbox-indicator.schema.json](schema/dr
 - `dropbox/`: incoming YAML vocabulary files
 - `archive/`: processed combined YAML files with minted identifiers
 - `unpublished/`: generated I-ADOPT Variable RDF assertions waiting for publish
-- `published/`: assertions already published as nanopublications
+- `published/`: the current definitions of the vocabulary's terms, as nanopublications,
+  copied from the network by `make sync-published`
+- `published-yaml/`: the same terms as one dropbox-style YAML file. Copy an entry
+  from there to change a term. The I-ADOPT projection doesn't publish every
+  dropbox field, so `short_name` and `ui_label` come back as `aliases`, and fields
+  such as `exact_matches` or `parent_indicators` aren't there.
 - `redirect/`: term identifier to nanopub identifier mappings
 - `build/`: transient build artifacts
 
@@ -130,6 +135,12 @@ Dry-run nanopub minting:
 make publish-defining DRY=--dry-run
 ```
 
+Copy the current terms from the network into `published/` and `published-yaml/`:
+
+```bash
+make published-assertions-yaml
+```
+
 Generate the vocabulary browser input from published nanopubs:
 
 ```bash
@@ -138,6 +149,11 @@ make assertions
 
 ## GitHub Workflows
 
+- `published-assertions-yaml.yaml` (every other Monday, and on demand): copies the
+  approved, non-deprecated terms from the network into `published/` and
+  `published-yaml/published-assertions.yaml`, as in the matrix and biochementity
+  repositories. Indicators are I-ADOPT variables, not OWL classes, so it uses the
+  "approved terms" query rather than the "approved classes" one.
 - `consistency-check.yaml` (weekly, and on demand): checks the vocabulary as
   Nanodash shows it and as `published/` holds it. It fails on duplicate labels
   and on links to terms that are not current (withdrawn or not approved), and

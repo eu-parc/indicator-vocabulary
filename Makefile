@@ -24,12 +24,23 @@ MIGRATE_SUGGESTER ?= https://orcid.org/0000-0001-8327-0142
 NANOPUB_TYPE ?= https://w3id.org/iadopt/ont/Variable
 NANOPUB_TEMPLATE ?= https://w3id.org/np/RAYXmR56YAlwKU-8h9cITx_0Y1_9t-lqXyVcJAgeEHDjw
 NANOPUB_PART_OF ?= https://w3id.org/spaces/chemical-exposome-indicator/r/vocabulary
+# Vocabulary query behind the Nanodash vocabulary view. Indicators are I-ADOPT
+# variables, not OWL classes, so this is the "approved terms" query.
+VOCABULARY_QUERY_URL ?= https://query.knowledgepixels.com/api/RA2n2ScNt4BMg-G2irLIMF6YG9g3iUY4JSKI2rWdikvcY/get-approved-terms-of-an-ontology-from-space-members?ontology=https%3A%2F%2Fw3id.org%2Fspaces%2Fchemical-exposome-indicator%2Fr%2Fvocabulary
+PUBLISHED_YAML_FOLDER ?= published-yaml
+PUBLISHED_ASSERTIONS_YAML ?= $(PUBLISHED_YAML_FOLDER)/published-assertions.yaml
+PUBLISHED_NANOPUB_MANIFEST ?= $(OUT_FOLDER)/published-nanopubs.tsv
+# 0 while the vocabulary has no approved terms yet; raise it once it has some.
+PUBLISHED_NANOPUB_MIN_COUNT ?= 0
 DRY ?=
 
 BOT_NAME ?= Indicator bot
 BOT_ID ?= https://w3id.org/np/RAAgRoFvRqnuCohjPVLvT80VpdM59Vgodhw7D6lHZ1pFw/indicator-bot
-BOT_OWNER_ORCID ?= https://orcid.org/0000-0001-8327-0142
-BOT_OWNER_NAME ?= Gertjan Bisschop
+# Owner named in the bot's introduction: the person who sets up the bot. No
+# default; pass both, e.g. make bot-identity BOT_OWNER_ORCID=https://orcid.org/...
+# BOT_OWNER_NAME='...'.
+BOT_OWNER_ORCID ?=
+BOT_OWNER_NAME ?=
 BOT_IDENTITY_DIR ?= bot-identity
 CI_REPO ?= eu-parc/indicator-vocabulary
 BOT_PUBLISH_ARGS ?=
@@ -41,9 +52,9 @@ DATA_FILES = $(sort $(wildcard $(DROPBOX_FOLDER)/*.yaml))
 
 .PHONY: help print-data prepare fetch-peh-schema aggregate mint graph2assertions \
 	validate-pipeline validate-nanopubs validate-pr process-dropbox archive-dropbox \
-	publish-defining migrate pipeline assertions \
-	bot-identity publish-bot-introduction bot-ci-secrets \
-	test-flow clean
+	publish-defining migrate pipeline sync-published assertions published-assertions-yaml \
+	check-bot-owner bot-identity publish-bot-introduction bot-ci-secrets \
+	check-consistency test-flow clean
 
 help:
 	@echo "Targets:"
@@ -55,9 +66,12 @@ help:
 	@echo "  make publish-defining          # mint unpublished assertions -> published/*.trig + id-map"
 	@echo "  make publish-defining DRY=--dry-run"
 	@echo "  make migrate                   # one-time id migration of existing terms"
+	@echo "  make sync-published            # download current vocabulary nanopubs into $(PUBLISHED_FOLDER)"
+	@echo "  make published-assertions-yaml # sync, then serialize published assertions -> $(PUBLISHED_ASSERTIONS_YAML)"
 	@echo "  make bot-identity              # one-time: generate bot keypair + introduction"
 	@echo "  make publish-bot-introduction  # one-time: publish the reviewed introduction"
 	@echo "  make bot-ci-secrets            # one-time: push signing key + identity URIs to $(CI_REPO)"
+	@echo "  make check-consistency         # check the vocabulary query and $(PUBLISHED_FOLDER) for duplicates, broken links, drift"
 	@echo "  make test-flow                 # local end-to-end dry-run test"
 
 print-data:
@@ -180,10 +194,16 @@ migrate: prepare
 		$(PUBLISH_KEY_ARGS) \
 		$(DRY)
 
-bot-identity:
+check-bot-owner:
+	@if [ -z "$(BOT_OWNER_ORCID)" ] || [ -z "$(BOT_OWNER_NAME)" ]; then \
+		echo "Set BOT_OWNER_ORCID and BOT_OWNER_NAME to the ORCID and name of the person setting up the bot."; \
+		exit 1; \
+	fi
+
+bot-identity: check-bot-owner
 	uv run pubmate-bootstrap-identity $(_BOOTSTRAP_ARGS) --generate-keys
 
-publish-bot-introduction:
+publish-bot-introduction: check-bot-owner
 	uv run pubmate-bootstrap-identity $(_BOOTSTRAP_ARGS) \
 		--private-key $(BOT_IDENTITY_DIR)/id_rsa --public-key $(BOT_IDENTITY_DIR)/id_rsa.pub \
 		--publish $(BOT_PUBLISH_ARGS)
@@ -208,6 +228,28 @@ assertions: prepare
 			--nanopub-folder $(PUBLISHED_FOLDER) \
 			--out $(ASSERTIONS_FOLDER); \
 	fi
+
+sync-published: prepare
+	@set -e; \
+	uv run python scripts/sync_published_nanopubs.py \
+		--query-url "$(VOCABULARY_QUERY_URL)" \
+		--output-dir $(PUBLISHED_FOLDER) \
+		--manifest $(PUBLISHED_NANOPUB_MANIFEST) \
+		--min-count $(PUBLISHED_NANOPUB_MIN_COUNT)
+
+published-assertions-yaml: sync-published
+	rm -rf $(ASSERTIONS_FOLDER)
+	$(MAKE) assertions
+	mkdir -p $(ASSERTIONS_FOLDER)
+	uv run python scripts/published_assertions_to_yaml.py \
+		--assertion-folder $(ASSERTIONS_FOLDER) \
+		--output $(PUBLISHED_ASSERTIONS_YAML)
+
+check-consistency:
+	uv run python scripts/check_consistency.py \
+		--query-url "$(VOCABULARY_QUERY_URL)" \
+		--namespace "$(MINT_NAMESPACE)" \
+		--published-dir $(PUBLISHED_FOLDER)
 
 test-flow:
 	$(MAKE) validate-pipeline

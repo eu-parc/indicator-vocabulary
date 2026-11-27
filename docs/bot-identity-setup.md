@@ -10,7 +10,7 @@ Defaults are defined in the `Makefile`:
 |---|---|
 | `BOT_NAME` | `Indicator bot` |
 | `BOT_ID` | `indicator-bot` |
-| `BOT_OWNER_ORCID` | `https://orcid.org/0000-0001-8327-0142` |
+| `BOT_OWNER_ORCID`, `BOT_OWNER_NAME` | none: the ORCID and name of the person who sets up the bot (the current Indicator bot's introduction names Gertjan Bisschop) |
 | `CI_REPO` | `eu-parc/indicator-vocabulary` |
 
 ## Steps
